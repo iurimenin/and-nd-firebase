@@ -1,18 +1,20 @@
 apply plugin: 'com.android.application'
+apply plugin: 'kotlin-android'
 
 repositories {
     mavenLocal()
     flatDir {
         dirs 'libs'
     }
+    mavenCentral()
 }
 
 android {
-    compileSdkVersion 24
-    buildToolsVersion "24.0.1"
+    compileSdkVersion 25
+    buildToolsVersion "25.0.2"
 
     defaultConfig {
-        applicationId "com.google.firebase.udacity.friendlychat"
+        applicationId "io.github.iurimenin.friendlychat"
         minSdkVersion 16
         targetSdkVersion 24
         versionCode 1
@@ -24,6 +26,10 @@ android {
             proguardFiles getDefaultProguardFile('proguard-android.txt'), 'proguard-rules.pro'
         }
     }
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_1_8
+        targetCompatibility JavaVersion.VERSION_1_8
+    }
     packagingOptions {
         exclude 'META-INF/LICENSE'
         exclude 'META-INF/LICENSE-FIREBASE.txt'
@@ -31,13 +37,32 @@ android {
     }
 }
 
+ext {
+    firebaseVersion = "11.0.1"
+    firebaseUIVersion = "1.2.0"
+    androidSupport = "25.4.0"
+}
+
 dependencies {
     compile fileTree(dir: 'libs', include: ['*.jar'])
     testCompile 'junit:junit:4.12'
 
-    compile 'com.android.support:design:24.2.0'
-    compile 'com.android.support:appcompat-v7:24.2.0'
+    compile "com.android.support:design:$androidSupport"
+    compile "com.android.support:appcompat-v7:$androidSupport"
 
     // Displaying images
-    compile 'com.github.bumptech.glide:glide:3.6.1'
+    compile 'com.github.bumptech.glide:glide:3.7.0'
+
+    //Kotlin
+    compile "org.jetbrains.kotlin:kotlin-stdlib-jre8:$kotlin_version"
+    implementation 'com.android.support.constraint:constraint-layout:1.0.2'
+
+    //Firebase
+    compile "com.google.firebase:firebase-core:${firebaseVersion}"
+    compile "com.google.firebase:firebase-auth:${firebaseVersion}"
+    compile "com.google.firebase:firebase-database:${firebaseVersion}"
+    compile "com.google.firebase:firebase-crash:${firebaseVersion}"
 }
+
+apply plugin: 'com.google.gms.google-services'
+apply plugin: 'kotlin-android-extensions'
