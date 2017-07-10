@@ -39,7 +39,7 @@ android {
 
 ext {
     firebaseVersion = "11.0.1"
-    firebaseUIVersion = "1.2.0"
+    firebaseUIVersion = "2.0.1"
     androidSupport = "25.4.0"
 }
 
@@ -62,6 +62,12 @@ dependencies {
     compile "com.google.firebase:firebase-auth:${firebaseVersion}"
     compile "com.google.firebase:firebase-database:${firebaseVersion}"
     compile "com.google.firebase:firebase-crash:${firebaseVersion}"
+
+    //FirebaseUI
+    compile "com.firebaseui:firebase-ui-auth:${firebaseUIVersion}"
+
+    // Anko Commons
+    compile "org.jetbrains.anko:anko-commons:$anko_version"
 }
 
 apply plugin: 'com.google.gms.google-services'
