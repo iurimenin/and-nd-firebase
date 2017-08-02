@@ -62,6 +62,7 @@ dependencies {
     compile "com.google.firebase:firebase-auth:${firebaseVersion}"
     compile "com.google.firebase:firebase-database:${firebaseVersion}"
     compile "com.google.firebase:firebase-crash:${firebaseVersion}"
+    compile "com.google.firebase:firebase-storage:${firebaseVersion}"
 
     //FirebaseUI
     compile "com.firebaseui:firebase-ui-auth:${firebaseUIVersion}"

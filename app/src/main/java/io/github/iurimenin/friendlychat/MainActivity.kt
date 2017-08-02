@@ -1,6 +1,7 @@
 package io.github.iurimenin.friendlychat
 
 import android.content.Intent
+import android.net.Uri
 import android.os.Bundle
 import android.support.v7.app.AppCompatActivity
 import android.text.Editable
@@ -13,6 +14,8 @@ import com.firebase.ui.auth.AuthUI
 import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.auth.FirebaseAuth.AuthStateListener
 import com.google.firebase.database.*
+import com.google.firebase.storage.FirebaseStorage
+import com.google.firebase.storage.StorageReference
 import kotlinx.android.synthetic.main.activity_main.*
 import org.jetbrains.anko.toast
 import java.util.*
@@ -26,11 +29,14 @@ class MainActivity : AppCompatActivity() {
 
     // Choose an arbitrary request code value
     private val RC_SIGN_IN = 1
+    private val RC_PHOTO_PICKER = 2
 
     val ANONYMOUS = "anonymous"
     val DEFAULT_MSG_LENGTH_LIMIT = 1000
 
     private var mUsername: String = ANONYMOUS
+
+    private var mMessageAdapter: MessageAdapter? = null
 
     //Firebase instance variables
     private var mFirebaseDatabase: FirebaseDatabase? = null
@@ -38,8 +44,8 @@ class MainActivity : AppCompatActivity() {
     private var mChildEventListner : ChildEventListener? = null
     private var mFirebaseAuth : FirebaseAuth? = null
     private var mAuthStateListener : AuthStateListener? = null
-
-    private var mMessageAdapter: MessageAdapter? = null
+    private var mFirebaseStorage : FirebaseStorage? = null
+    private var mChatPhotosStorageReference : StorageReference? = null
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -48,7 +54,10 @@ class MainActivity : AppCompatActivity() {
         //Initialize Firebase components
         mFirebaseDatabase = FirebaseDatabase.getInstance()
         mFirebaseAuth = FirebaseAuth.getInstance()
+        mFirebaseStorage = FirebaseStorage.getInstance()
+
         mMessagesDatabaseReference = mFirebaseDatabase?.getReference()?.child("messages")
+        mChatPhotosStorageReference = mFirebaseStorage?.getReference()?.child("chat_photos")
 
         // Initialize message ListView and its adapter
         val friendlyMessages = ArrayList<FriendlyMessage>()
@@ -59,8 +68,12 @@ class MainActivity : AppCompatActivity() {
         progressBar.visibility = ProgressBar.INVISIBLE
 
         // ImagePickerButton shows an image picker to upload a image for a message
-        photoPickerButton!!.setOnClickListener {
-            // TODO: Fire an intent to show an image picker
+        photoPickerButton?.setOnClickListener {
+            val intent = Intent(Intent.ACTION_GET_CONTENT)
+            intent.type = "image/jpeg"
+            intent.putExtra(Intent.EXTRA_LOCAL_ONLY, true)
+            startActivityForResult(Intent.createChooser(intent,
+                    "Complete action using"), RC_PHOTO_PICKER)
         }
 
         // Enable Send button when there's text to send
@@ -77,7 +90,6 @@ class MainActivity : AppCompatActivity() {
 
         // Send button sends a message and clears the EditText
         sendButton.setOnClickListener {
-            // TODO: Send messages on click
 
             val friendlyMessage = FriendlyMessage(messageEditText.text.toString(),
                     mUsername, null)
@@ -152,6 +164,23 @@ class MainActivity : AppCompatActivity() {
             } else if (resultCode == RESULT_CANCELED) {
                 toast(R.string.sign_in_canceled)
                 finish()
+            }
+        } else if (requestCode == RC_PHOTO_PICKER && resultCode == RESULT_OK) {
+            data?.data?.let {
+                val selectedImageUri : Uri = it
+                val photoRef: StorageReference =
+                        mChatPhotosStorageReference?.child(selectedImageUri.lastPathSegment)!!
+
+                photoRef.putFile(selectedImageUri).addOnSuccessListener {
+                    it.downloadUrl?.let {
+                        val downloadUrl: Uri = it
+
+                        val friendlyMessage =
+                                FriendlyMessage(null, mUsername, downloadUrl.toString())
+
+                        mMessagesDatabaseReference?.push()?.setValue(friendlyMessage)
+                    }
+                }
             }
         }
     }
