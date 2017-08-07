@@ -14,18 +14,22 @@ import com.firebase.ui.auth.AuthUI
 import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.auth.FirebaseAuth.AuthStateListener
 import com.google.firebase.database.*
+import com.google.firebase.remoteconfig.FirebaseRemoteConfig
+import com.google.firebase.remoteconfig.FirebaseRemoteConfigSettings
 import com.google.firebase.storage.FirebaseStorage
 import com.google.firebase.storage.StorageReference
 import kotlinx.android.synthetic.main.activity_main.*
+import org.jetbrains.anko.AnkoLogger
+import org.jetbrains.anko.debug
 import org.jetbrains.anko.toast
+import org.jetbrains.anko.warn
 import java.util.*
+import kotlin.collections.HashMap
 
 /**
  * Created by Iuri Menin on 20/06/17.
  */
-class MainActivity : AppCompatActivity() {
-
-    val TAG = "MainActivity"
+class MainActivity : AppCompatActivity(), AnkoLogger {
 
     // Choose an arbitrary request code value
     private val RC_SIGN_IN = 1
@@ -33,6 +37,7 @@ class MainActivity : AppCompatActivity() {
 
     val ANONYMOUS = "anonymous"
     val DEFAULT_MSG_LENGTH_LIMIT = 1000
+    val FRIENDLY_MSG_LENGTH_KEY: String = "friendly_msg_length"
 
     private var mUsername: String = ANONYMOUS
 
@@ -46,6 +51,7 @@ class MainActivity : AppCompatActivity() {
     private var mAuthStateListener : AuthStateListener? = null
     private var mFirebaseStorage : FirebaseStorage? = null
     private var mChatPhotosStorageReference : StorageReference? = null
+    private var mFirebaseRemoteConfig : FirebaseRemoteConfig? = null
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -55,6 +61,7 @@ class MainActivity : AppCompatActivity() {
         mFirebaseDatabase = FirebaseDatabase.getInstance()
         mFirebaseAuth = FirebaseAuth.getInstance()
         mFirebaseStorage = FirebaseStorage.getInstance()
+        mFirebaseRemoteConfig = FirebaseRemoteConfig.getInstance()
 
         mMessagesDatabaseReference = mFirebaseDatabase?.getReference()?.child("messages")
         mChatPhotosStorageReference = mFirebaseStorage?.getReference()?.child("chat_photos")
@@ -123,6 +130,18 @@ class MainActivity : AppCompatActivity() {
                         RC_SIGN_IN)
             }
         })
+
+        var configSettings = FirebaseRemoteConfigSettings.Builder()
+                .setDeveloperModeEnabled(BuildConfig.DEBUG)
+                .build()
+
+        mFirebaseRemoteConfig?.setConfigSettings(configSettings)
+
+        var defaultConfigMap : HashMap<String, Any> = HashMap()
+        defaultConfigMap.put(FRIENDLY_MSG_LENGTH_KEY, DEFAULT_MSG_LENGTH_LIMIT)
+
+        mFirebaseRemoteConfig?.setDefaults(defaultConfigMap)
+        fetchConfig()
     }
 
     override fun onCreateOptionsMenu(menu: Menu): Boolean {
@@ -224,5 +243,31 @@ class MainActivity : AppCompatActivity() {
             mMessagesDatabaseReference?.removeEventListener(mChildEventListner)
             mChildEventListner = null
         }
+    }
+
+    private fun fetchConfig() {
+
+        var cacheExpiration : Long = 3600
+
+        if (mFirebaseRemoteConfig?.info?.configSettings?.isDeveloperModeEnabled == true)
+            cacheExpiration = 0
+
+        mFirebaseRemoteConfig?.fetch(cacheExpiration)
+                ?.addOnSuccessListener {
+                    mFirebaseRemoteConfig?.activateFetched()
+                    applyRetrievedLengthLimit()
+                }
+                ?.addOnFailureListener {
+
+                    warn("Error fetching config", it)
+                    applyRetrievedLengthLimit()
+                }
+    }
+
+    private fun applyRetrievedLengthLimit() {
+
+        val friendly_msg_length = mFirebaseRemoteConfig?.getLong(FRIENDLY_MSG_LENGTH_KEY) as Int
+        messageEditText.filters = arrayOf<InputFilter>(InputFilter.LengthFilter(friendly_msg_length))
+        debug { FRIENDLY_MSG_LENGTH_KEY + " - " + friendly_msg_length }
     }
 }
