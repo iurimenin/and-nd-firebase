@@ -9,22 +9,29 @@ import android.text.InputFilter
 import android.text.TextWatcher
 import android.view.Menu
 import android.view.MenuItem
+import android.view.View
 import android.widget.ProgressBar
+import com.bumptech.glide.Glide
 import com.firebase.ui.auth.AuthUI
+import com.firebase.ui.database.FirebaseListAdapter
 import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.auth.FirebaseAuth.AuthStateListener
-import com.google.firebase.database.*
+import com.google.firebase.database.ChildEventListener
+import com.google.firebase.database.DatabaseReference
+import com.google.firebase.database.FirebaseDatabase
 import com.google.firebase.remoteconfig.FirebaseRemoteConfig
 import com.google.firebase.remoteconfig.FirebaseRemoteConfigSettings
 import com.google.firebase.storage.FirebaseStorage
 import com.google.firebase.storage.StorageReference
 import kotlinx.android.synthetic.main.activity_main.*
+import kotlinx.android.synthetic.main.item_message.view.*
 import org.jetbrains.anko.AnkoLogger
 import org.jetbrains.anko.debug
 import org.jetbrains.anko.toast
 import org.jetbrains.anko.warn
 import java.util.*
 import kotlin.collections.HashMap
+
 
 /**
  * Created by Iuri Menin on 20/06/17.
@@ -41,7 +48,7 @@ class MainActivity : AppCompatActivity(), AnkoLogger {
 
     private var mUsername: String = ANONYMOUS
 
-    private var mMessageAdapter: MessageAdapter? = null
+    private var mMessageAdapter: FirebaseListAdapter<FriendlyMessage>? = null
 
     //Firebase instance variables
     private var mFirebaseDatabase: FirebaseDatabase? = null
@@ -63,12 +70,32 @@ class MainActivity : AppCompatActivity(), AnkoLogger {
         mFirebaseStorage = FirebaseStorage.getInstance()
         mFirebaseRemoteConfig = FirebaseRemoteConfig.getInstance()
 
-        mMessagesDatabaseReference = mFirebaseDatabase?.getReference()?.child("messages")
-        mChatPhotosStorageReference = mFirebaseStorage?.getReference()?.child("chat_photos")
+        mMessagesDatabaseReference = mFirebaseDatabase?.reference?.child("messages")
+        mChatPhotosStorageReference = mFirebaseStorage?.reference?.child("chat_photos")
 
         // Initialize message ListView and its adapter
-        val friendlyMessages = ArrayList<FriendlyMessage>()
-        mMessageAdapter = MessageAdapter(this, R.layout.item_message, friendlyMessages)
+        mMessageAdapter = object : FirebaseListAdapter<FriendlyMessage>(this,
+                FriendlyMessage::class.java,
+                R.layout.item_message,
+                mMessagesDatabaseReference) {
+
+            override fun populateView(view: View, chatMessage: FriendlyMessage, position: Int) {
+
+                val isPhoto = !chatMessage.photoUrl.isNullOrBlank()
+                if (isPhoto) {
+                    view.messageTextView.visibility = View.GONE
+                    view.photoImageView.visibility = View.VISIBLE
+                    Glide.with(view.photoImageView.context)
+                            .load(chatMessage.photoUrl)
+                            .into(view.photoImageView)
+                } else {
+                    view.messageTextView.visibility = View.VISIBLE
+                    view.photoImageView.visibility = View.GONE
+                    view.messageTextView.text = chatMessage.text
+                }
+                view.nameTextView.text = chatMessage.name
+            }
+        }
         messageListView.adapter = mMessageAdapter
 
         // Initialize progress bar
@@ -98,10 +125,13 @@ class MainActivity : AppCompatActivity(), AnkoLogger {
         // Send button sends a message and clears the EditText
         sendButton.setOnClickListener {
 
-            val friendlyMessage = FriendlyMessage(messageEditText.text.toString(),
-                    mUsername, null)
+            val key = mMessagesDatabaseReference?.push()?.key
+            key?.let { it1 ->
+                val friendlyMessage = FriendlyMessage(it1, messageEditText.text.toString(),
+                        mUsername, null)
 
-            mMessagesDatabaseReference?.push()?.setValue(friendlyMessage)
+                mMessagesDatabaseReference?.child(it1)?.setValue(friendlyMessage)
+            }
 
             // Clear input box
             messageEditText!!.setText("")
@@ -131,13 +161,13 @@ class MainActivity : AppCompatActivity(), AnkoLogger {
             }
         })
 
-        var configSettings = FirebaseRemoteConfigSettings.Builder()
+        val configSettings = FirebaseRemoteConfigSettings.Builder()
                 .setDeveloperModeEnabled(BuildConfig.DEBUG)
                 .build()
 
         mFirebaseRemoteConfig?.setConfigSettings(configSettings)
 
-        var defaultConfigMap : HashMap<String, Any> = HashMap()
+        val defaultConfigMap : HashMap<String, Any> = HashMap()
         defaultConfigMap.put(FRIENDLY_MSG_LENGTH_KEY, DEFAULT_MSG_LENGTH_LIMIT)
 
         mFirebaseRemoteConfig?.setDefaults(defaultConfigMap)
@@ -171,7 +201,7 @@ class MainActivity : AppCompatActivity(), AnkoLogger {
     override fun onPause() {super.onPause()
         mAuthStateListener?.let { mFirebaseAuth?.removeAuthStateListener(it) }
         detachDatabaseReadListener()
-        mMessageAdapter?.clear()
+        mMessageAdapter?.cleanup()
     }
 
     override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
@@ -185,8 +215,8 @@ class MainActivity : AppCompatActivity(), AnkoLogger {
                 finish()
             }
         } else if (requestCode == RC_PHOTO_PICKER && resultCode == RESULT_OK) {
-            data?.data?.let {
-                val selectedImageUri : Uri = it
+            if (data?.data != null) {
+                val selectedImageUri : Uri = data?.data
                 val photoRef: StorageReference =
                         mChatPhotosStorageReference?.child(selectedImageUri.lastPathSegment)!!
 
@@ -194,10 +224,11 @@ class MainActivity : AppCompatActivity(), AnkoLogger {
                     it.downloadUrl?.let {
                         val downloadUrl: Uri = it
 
+                        val key = mMessagesDatabaseReference?.push()?.key
                         val friendlyMessage =
-                                FriendlyMessage(null, mUsername, downloadUrl.toString())
+                                FriendlyMessage(key!!, null, mUsername, downloadUrl.toString())
 
-                        mMessagesDatabaseReference?.push()?.setValue(friendlyMessage)
+                        mMessagesDatabaseReference?.child(key!!)?.setValue(friendlyMessage)
                     }
                 }
             }
@@ -206,35 +237,11 @@ class MainActivity : AppCompatActivity(), AnkoLogger {
 
     private fun onSignedInInitialize(username: String) {
         mUsername = username
-        attachDatabaseReadListener()
-    }
-
-    private fun attachDatabaseReadListener() {
-
-        if(mChildEventListner == null) {
-            mChildEventListner = object : ChildEventListener {
-
-                override fun onChildAdded(dataSnapshot: DataSnapshot, s: String?) {
-                    val friendlyMessage = dataSnapshot.getValue(FriendlyMessage::class.java)
-                    mMessageAdapter?.add(friendlyMessage)
-                }
-
-                override fun onChildChanged(dataSnapshot: DataSnapshot, s: String?) {}
-
-                override fun onChildRemoved(dataSnapshot: DataSnapshot) {}
-
-                override fun onChildMoved(dataSnapshot: DataSnapshot, s: String?) {}
-
-                override fun onCancelled(databaseError: DatabaseError) {}
-            }
-
-            mMessagesDatabaseReference?.addChildEventListener(mChildEventListner)
-        }
     }
 
     private fun onSignedOutCleanup() {
         mUsername = ANONYMOUS
-        mMessageAdapter?.clear()
+        mMessageAdapter?.cleanup()
         detachDatabaseReadListener()
     }
 
@@ -266,8 +273,10 @@ class MainActivity : AppCompatActivity(), AnkoLogger {
 
     private fun applyRetrievedLengthLimit() {
 
-        val friendly_msg_length = mFirebaseRemoteConfig?.getLong(FRIENDLY_MSG_LENGTH_KEY) as Int
-        messageEditText.filters = arrayOf<InputFilter>(InputFilter.LengthFilter(friendly_msg_length))
-        debug { FRIENDLY_MSG_LENGTH_KEY + " - " + friendly_msg_length }
+        val friendly_msg_length = mFirebaseRemoteConfig?.getLong(FRIENDLY_MSG_LENGTH_KEY)
+        friendly_msg_length?.let {
+            messageEditText.filters = arrayOf<InputFilter>(InputFilter.LengthFilter(it.toInt()))
+            debug { FRIENDLY_MSG_LENGTH_KEY + " - " + friendly_msg_length }
+        }
     }
 }
